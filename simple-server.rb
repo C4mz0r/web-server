@@ -1,6 +1,7 @@
 require 'socket'
 require 'colorize'
 require 'json'
+CRLF = "\r\n"
 
 # Parse the request line into a hash containing
 # :method -> GET, POST
@@ -9,11 +10,9 @@ require 'json'
 #  Returns hash or exception if error is found
 def parse_request(request_line)
 	parsed_request = {}
-	#puts "The request_line is #{request_line}"
 	matches = request_line.match(/(GET|POST)\s(.*)\s(HTTP\/\d\.\d)/)
 	raise "Error with input string" if matches.nil?
 	
-	#puts "matches is #{matches}.inspect"
 	parsed_request[:method] = matches[1]
 	parsed_request[:uri] = matches[2].match(/[[:alnum:]]+\.(html|htm)/)[0]
 	parsed_request[:http_version] = matches[3]
@@ -22,38 +21,37 @@ def parse_request(request_line)
 end
 
 # Respond to a request
-# Returns hash with the [:response_line], and [:content], if available
-def respond_to_request(request)
+# Returns the response
+def respond_to_request(request, body = "")
 
-	response = {}
+	response = ""
 	parsed_request = parse_request(request)
-	#puts "parsed_request is " + parsed_request.inspect
 	
 	if parsed_request[:method] == "GET"
 		if File.exist?(parsed_request[:uri])
-			response[:content] = read_file(parsed_request[:uri])
-			response[:response_line] = "HTTP/1.0 200 OK"
-			response[:header] =  "Date: #{Time.new.ctime}\n"
-			response[:header] += "Content-Type: text/html\n"
-			response[:header] += "Content-Length: #{response[:content].length}\n"
+			body = read_file(parsed_request[:uri])
+			response += "HTTP/1.0 200 OK" + CRLF
+			response += "Content-Type: text/html" + CRLF
+			response += "Content-Length: #{body.length}" + CRLF
+			response += CRLF # HTTP convention is a blank line between headers and body
+			response += body			
 		else
 			puts "Requested content #{parsed_request[:uri]} does not exist"
-			response[:response_line] = "HTTP/1.0 404 Not Found"
+			response += "HTTP/1.0 404 Not Found"
 		end
-	elsif parsed_request[:method] == "POST"
-		
-		data = JSON.parse(request)		
-		params = JSON.parse( data['post_data'] )		
+	elsif parsed_request[:method] == "POST"	
+		params = JSON.parse(body)
+					
 		replacement_html = "<li>#{params['viking']['name']}</li><li>#{params['viking']['email']}</li>"	
 		
 		content = read_file('thanks.html') 
 		content.gsub!("<%= yield %>", replacement_html) # surely this can't be the right way...
 		
-		response[:content] = content
-		response[:response_line] = "HTTP/1.0 200 OK"
-		response[:header] =  "Date: #{Time.new.ctime}\n"
-		response[:header] += "Content-Type: text/html\n"
-		response[:header] += "Content-Length: #{response[:content].length}\n"
+		response = "HTTP/1.0 200 OK" + CRLF
+		response += "Date: #{Time.new.ctime}" + CRLF
+		response += "Content-Length: #{content.length}" + CRLF
+		response += CRLF
+		response += content
 	else
 		puts "Not sure how to deal with #{parsed_request[:method]}"
 	end
@@ -75,20 +73,25 @@ end
 server = TCPServer.open(2000)					# listen on port 2000 for client to connect
 loop do
 	client = server.accept					# wait for a client to connect
+	request = ""
+	while ( line = client.gets  )		
+		request += line
+		if request =~ /#{CRLF}#{CRLF}$/ 
+			break
+		end
+	end
 	
-	#request = ""
-	#while request == "" 
-		request = client.gets					# receive the request from the client
-		
-		puts "The request is #{request}".colorize(:blue)	# print it out for debugging purposes...
-	#end
+	# check for content length and get body
+	md = request.match(/Content-Length: (\d+)/)
+	content_length = md[1] if !md.nil?
+	body = ""
+	body = client.gets if !content_length.nil?	
+	request += body
 
-	response = respond_to_request(request)			# parse out the request and respond to it
-	
-	client.puts(response[:response_line])
-	client.puts(response[:header])
-	client.puts(response[:content])				# give the client back the response
+	puts "The request is #{request}".colorize(:blue)	# print it out for debugging purposes...
 
+	response = respond_to_request(request, body)		# parse out the request and respond to it (body is optional)
+	client.puts response
 	client.close
 end
 
