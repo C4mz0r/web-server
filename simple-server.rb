@@ -13,10 +13,20 @@ def parse_request(request_line)
 	matches = request_line.match(/(GET|POST)\s(.*)\s(HTTP\/\d\.\d)/)
 	raise "Error with input string" if matches.nil?
 	
+	puts "#{matches}"
+
 	parsed_request[:method] = matches[1]
-	parsed_request[:uri] = matches[2].match(/[[:alnum:]]+\.(html|htm)/)[0]
+	if (matches[2].include?"jpg" or matches[2].include?"jpeg")	
+		parsed_request[:uri] = matches[2].match(/[[:alnum:]]+\/[[:alnum:]]+\.(jpg|jpeg)/)[0]
+	else
+		parsed_request[:uri] = matches[2].match(/[[:alnum:]]+\.(html|htm|jpg|jpeg)/)[0]
+	end
 	parsed_request[:http_version] = matches[3]
-	
+
+	puts "#{parsed_request[:method]}".colorize(:green)
+	puts "#{parsed_request[:uri]}".colorize(:green)
+	puts "#{parsed_request[:http_version]}".colorize(:green)
+	puts "#{parsed_request.inspect}".colorize(:yellow)
 	parsed_request
 end
 
@@ -29,9 +39,21 @@ def respond_to_request(request, body = "")
 	
 	if parsed_request[:method] == "GET"
 		if File.exist?(parsed_request[:uri])
-			body = read_file(parsed_request[:uri])
+			if ( parsed_request[:uri] == "picture.html" )
+				puts "HERE".colorize(:red)
+				body = read_file(parsed_request[:uri])
+				image = select_random_image("images") # I'm calling my folder images
+				image_str = "<img src=images/#{image}>"
+				body.gsub!("<%= yield %>", image_str)
+			else # the old get request of the file directly
+				body = read_file(parsed_request[:uri])
+			end
 			response += "HTTP/1.0 200 OK" + CRLF
-			response += "Content-Type: text/html" + CRLF
+			if (parsed_request[:uri].include?(".jpg") )
+				response += "Content-Type: image/gif"
+			else
+				response += "Content-Type: text/html" + CRLF
+			end
 			response += "Content-Length: #{body.length}" + CRLF
 			response += CRLF # HTTP convention is a blank line between headers and body
 			response += body			
@@ -68,6 +90,10 @@ def read_file(item)
 		end
 	end
 	content
+end
+
+def select_random_image(folder)
+	Dir.entries(folder).select {|f| !File.directory? f}.sample
 end
 
 server = TCPServer.open(2000)					# listen on port 2000 for client to connect

@@ -1,0 +1,15 @@
+<html>	
+	<body>
+		<!-- Simple function to reload the page every 10 seconds -->
+		<script>
+			setInterval(function(){location.reload()},10000);
+		</script>
+
+		<!-- Reload the page on demand if the button is clicked -->
+		<button style="height:50px;width:100%" onclick=location.reload()>Reload</button>
+		<p>
+		
+		<!-- replace this with content -->
+		<%= yield %>
+	</body>
+</html>
